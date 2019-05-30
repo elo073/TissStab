@@ -1,0 +1,349 @@
+---
+title: "QC report on Cellranger metrics output"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+
+```{r}
+library(ggplot2)
+```
+
+
+QC data files bigfile.csv, colnames.csv and filenames.csv were gained from a directory containing all "metrics.csv" files from each cellranger output named as the sample names. Files were combined as follows:
+
+awk 'FNR == 1' HCATisStab7413619 > colnames.csv
+ls HCA* > filenames.csv
+awk 'FNR > 1' HCA* > bigfile.csv
+
+bigfile.csv was re-formatted in Excel for R formatting issues.
+
+```{r read data, eval=FALSE}
+
+data=read.csv("/Users/elo073/Documents/UK/TisStab/QC/bigfile.ex.csv", header=FALSE)
+collnames=read.csv("/Users/elo073/Documents/UK/TisStab/QC/colnames.csv")
+filenames=read.csv("/Users/elo073/Documents/UK/TisStab/QC/filenames.csv", header=FALSE)
+
+colnames(data)=colnames(collnames)
+rownames(data)=filenames[,1]
+
+head(data)
+
+info=read.csv("/Users/elo073/Documents/UK/TisStab/allsamples.csv")
+rownames(info)=info$sample
+head(info)
+data= data[as.character(info$sample),]
+
+data$SAMPLE = rownames(data)
+data$timepoint = info[rownames(data),"timepoint"]
+data$organ = info[rownames(data),"organ"]
+data$patient = info[rownames(data),"patient"]
+
+saveRDS(data, "/Users/elo073/Documents/UK/TisStab/QC/qcdata")
+```
+
+
+```{r}
+data=readRDS("/Users/elo073/Documents/UK/TisStab/QC/qcdata")
+
+head(data)
+
+summary(data)
+data$donor_time=paste(data$patient, data$timepoint,sep="_")
+data$time_donor=paste(data$timepoint, data$patient,sep="_")
+data$Donor=data$patient
+data$Time=data$timepoint
+data$organ_donor=paste(data$organ, data$patient,sep="_")
+data$donor=paste0(data$Donor, data$organ)
+data$donor=as.factor(data$donor)
+levels(data$donor)
+levels(data$donor)=c("D1", "D1","D2", "D2",
+                     "D3", "D3", "D4","D1",
+                     "D2","D4", "D5", "D5",
+                     "D3", "D6", "D4", "D5")
+
+```
+
+#"Reads.Mapped.Confidently.to.Transcriptome"   
+```{r}
+
+ggplot(data, aes(x=Time, y=Reads.Mapped.Confidently.to.Transcriptome, group=organ_donor)) +
+  geom_point(aes(color=organ, shape=donor, size=3))+
+  ggtitle("Reads.Mapped.Confidently.to.Transcriptome")+
+  geom_line(linetype="dashed" , color="grey", size=0.9)
+```
+
+#Remove an outlier sample
+
+```{r}
+data=data[data$SAMPLE!="HCATisStabAug177276393",]
+
+Oesophagus=data[data$organ=="Oesophagus",]
+Lung=data[data$organ=="Lung",]
+Spleen=data[data$organ=="Spleen",]
+```
+
+
+
+#Estimated.Number.of.Cells
+```{r}
+
+ggplot(Lung, aes(x=Time, y=Estimated.Number.of.Cells, group=Donor)) +
+  geom_line(aes(linetype=Donor))+
+  geom_point()+
+  ggtitle("Lung")
+
+ggplot(Oesophagus, aes(x=Time, y=Estimated.Number.of.Cells, group=Donor)) +
+  geom_line(aes(linetype=Donor))+
+  geom_point()+
+  ggtitle("Oesophagus")
+
+ggplot(Spleen, aes(x=Time, y=Estimated.Number.of.Cells, group=Donor)) +
+  geom_line(aes(linetype=Donor))+
+  geom_point()+
+  ggtitle("Spleen")
+
+
+ggplot(data, aes(x=Time, y=Estimated.Number.of.Cells, group=organ_donor)) +
+  geom_point(aes(color=organ))+
+  ggtitle("Estimated.Number.of.Cells")+
+  geom_line(linetype="dashed" , color="grey", size=0.5)
+
+#pdf(file = "Rplot.pdf", width=10)
+ggplot(data, aes(x=Time, y=Estimated.Number.of.Cells, group=organ_donor)) +
+  geom_point(aes(color=organ, shape=donor, size=3))+
+  ggtitle("Estimated.Number.of.Cells")+
+  geom_line(linetype="dashed" , color="grey", size=0.9)
+#dev.off()
+
+
+```
+
+#"Mean.Reads.per.Cell"                           
+
+```{r}
+
+ggplot(data, aes(x=Time, y=Mean.Reads.per.Cell, group=organ_donor)) +
+  geom_point(aes(color=organ, shape=donor, size=3))+
+  ggtitle("Mean.Reads.per.Cell")+
+  geom_line(linetype="dashed" , color="grey", size=0.9)
+
+
+```
+
+
+#"Median.Genes.per.Cell"  
+```{r}
+ggplot(data, aes(x=Time, y=Median.Genes.per.Cell, group=organ_donor)) +
+  geom_point(aes(color=organ, shape=donor, size=3))+
+  ggtitle("Median.Genes.per.Cell")+
+  geom_line(linetype="dashed" , color="grey", size=0.9)
+
+
+
+```
+
+#"Number.of.Reads"   
+```{r}
+
+ggplot(data, aes(x=Time, y=Number.of.Reads, group=organ_donor)) +
+  geom_point(aes(color=organ, shape=donor, size=3))+
+  ggtitle("Number.of.Reads")+
+  geom_line(linetype="dashed" , color="grey", size=0.9)
+
+
+```
+
+#"Valid.Barcodes"   
+
+```{r}
+
+ggplot(data, aes(x=Time, y=Valid.Barcodes, group=organ_donor)) +
+  geom_point(aes(color=organ, shape=donor, size=3))+
+  ggtitle("Valid.Barcodes")+
+  geom_line(linetype="dashed" , color="grey", size=0.9)
+
+```
+
+
+#"Reads.Mapped.Confidently.to.Transcriptome"   
+```{r}
+
+ggplot(data, aes(x=Time, y=Reads.Mapped.Confidently.to.Transcriptome, group=organ_donor)) +
+  geom_point(aes(color=organ, shape=donor, size=3))+
+  ggtitle("Reads.Mapped.Confidently.to.Transcriptome")+
+  geom_line(linetype="dashed" , color="grey", size=0.9)
+
+#Paired student's t-test for 0h vs 72h confidently mapped to transcriptome in lung, oesophagus and spleen
+
+
+data2=Oesophagus
+t.test(c(data2$Reads.Mapped.Confidently.to.Transcriptome[data2$timepoint=="0h"], data2$Reads.Mapped.Confidently.to.Transcriptome[data2$timepoint=="72h"])~ c(data2$timepoint[data2$timepoint=="0h"], data2$timepoint[data2$timepoint=="72h"]), paired=TRUE)
+
+data2=Lung
+t.test(c(data2$Reads.Mapped.Confidently.to.Transcriptome[data2$timepoint=="0h"], data2$Reads.Mapped.Confidently.to.Transcriptome[data2$timepoint=="72h"])~ c(data2$timepoint[data2$timepoint=="0h"], data2$timepoint[data2$timepoint=="72h"]), paired=TRUE)
+
+
+data2=Spleen
+t.test(c(data2$Reads.Mapped.Confidently.to.Transcriptome[data2$timepoint=="0h"], data2$Reads.Mapped.Confidently.to.Transcriptome[data2$timepoint=="72h"])~ c(data2$timepoint[data2$timepoint=="0h"], data2$timepoint[data2$timepoint=="72h"]), paired=TRUE)
+
+```
+
+#"Reads.Mapped.Confidently.to.Exonic.Regions"   
+
+```{r}
+
+ggplot(data, aes(x=Time, y=Reads.Mapped.Confidently.to.Exonic.Regions, group=organ_donor)) +
+  geom_point(aes(color=organ, shape=donor, size=3))+
+  ggtitle("Reads.Mapped.Confidently.to.Exonic.Regions")+
+  geom_line(linetype="dashed" , color="grey", size=0.9)
+
+
+```
+
+#"Reads.Mapped.Confidently.to.Intronic.Regions"  
+
+```{r}
+
+ggplot(data, aes(x=Time, y=Reads.Mapped.Confidently.to.Intronic.Regions, group=organ_donor)) +
+  geom_point(aes(color=organ, shape=donor, size=3))+
+  ggtitle("Reads.Mapped.Confidently.to.Intronic.Regions")+
+  geom_line(linetype="dashed" , color="grey", size=0.9)
+
+
+```
+
+#"Reads.Mapped.Confidently.to.Intergenic.Regions"
+
+```{r}
+
+ggplot(Lung, aes(x=Time, y=Reads.Mapped.Confidently.to.Intergenic.Regions, group=Donor)) +
+  geom_line(aes(linetype=Donor))+
+  geom_point()+
+  ggtitle("Lung")
+
+ggplot(Oesophagus, aes(x=Time, y=Reads.Mapped.Confidently.to.Intergenic.Regions, group=Donor)) +
+  geom_line(aes(linetype=Donor))+
+  geom_point()+
+  ggtitle("Oesophagus")
+
+ggplot(Spleen, aes(x=Time, y=Reads.Mapped.Confidently.to.Intergenic.Regions, group=Donor)) +
+  geom_line(aes(linetype=Donor))+
+  geom_point()+
+  ggtitle("Spleen")
+
+ggplot(data, aes(x=Time, y=Reads.Mapped.Confidently.to.Intergenic.Regions, group=organ_donor)) +
+  geom_point(aes(color=organ))+
+  ggtitle("Reads.Mapped.Confidently.to.Intergenic.Regions")+
+  geom_line(linetype="dashed" , color="grey", size=0.5)
+
+```
+
+#"Reads.Mapped.Antisense.to.Gene"   
+
+```{r}
+
+ggplot(data, aes(x=Time, y=Reads.Mapped.Antisense.to.Gene, group=organ_donor)) +
+  geom_point(aes(color=organ, shape=donor, size=3))+
+  ggtitle("Reads.Mapped.Antisense.to.Gene")+
+  geom_line(linetype="dashed" , color="grey", size=0.9)
+
+
+```
+
+#"Sequencing.Saturation"     
+
+```{r}
+
+ggplot(data, aes(x=Time, y=Sequencing.Saturation, group=organ_donor)) +
+  geom_point(aes(color=organ, shape=donor, size=3))+
+  ggtitle("Sequencing.Saturation")+
+  geom_line(linetype="dashed" , color="grey", size=0.9)
+
+```
+
+#"Q30.Bases.in.Barcode"  
+
+```{r}
+
+ggplot(data, aes(x=Time, y=Q30.Bases.in.Barcode, group=organ_donor)) +
+  geom_point(aes(color=organ, shape=donor, size=3))+
+  ggtitle("Q30.Bases.in.Barcode")+
+  geom_line(linetype="dashed" , color="grey", size=0.9)
+
+```
+
+#"Q30.Bases.in.RNA.Read"  
+
+```{r}
+ggplot(data, aes(x=Time, y=Q30.Bases.in.RNA.Read, group=organ_donor)) +
+  geom_point(aes(color=organ, shape=donor, size=3))+
+  ggtitle("Q30.Bases.in.RNA.Read")+
+  geom_line(linetype="dashed" , color="grey", size=0.9)
+
+```
+
+#"Q30.Bases.in.Sample.Index"  
+
+```{r}
+
+ggplot(data, aes(x=Time, y=Q30.Bases.in.Sample.Index, group=organ_donor)) +
+  geom_point(aes(color=organ, shape=donor, size=3))+
+  ggtitle("Q30.Bases.in.Sample.Index")+
+  geom_line(linetype="dashed" , color="grey", size=0.9)
+
+
+```
+
+#"Q30.Bases.in.UMI"    
+
+```{r}
+
+ggplot(data, aes(x=Time, y=Q30.Bases.in.UMI, group=organ_donor)) +
+  geom_point(aes(color=organ, shape=donor, size=3))+
+  ggtitle("Q30.Bases.in.UMI")+
+  geom_line(linetype="dashed" , color="grey", size=0.9)
+
+```
+
+#"Fraction.Reads.in.Cells"  
+
+```{r}
+
+ggplot(data, aes(x=Time, y=Fraction.Reads.in.Cells, group=organ_donor)) +
+  geom_point(aes(color=organ, shape=donor, size=3))+
+  ggtitle("Fraction.Reads.in.Cells")+
+  geom_line(linetype="dashed" , color="grey", size=0.9)
+
+
+
+```
+#"Total.Genes.Detected"  
+
+```{r}
+ggplot(data, aes(x=Time, y=Total.Genes.Detected, group=organ_donor)) +
+  geom_point(aes(color=organ, shape=donor, size=3))+
+  ggtitle("Total.Genes.Detected")+
+  geom_line(linetype="dashed" , color="grey", size=0.9)
+
+```
+#"Median.UMI.Counts.per.Cell"
+
+```{r}
+
+ggplot(data, aes(x=Time, y=Median.UMI.Counts.per.Cell, group=organ_donor)) +
+  geom_point(aes(color=organ, shape=donor, size=3))+
+  ggtitle("Median.UMI.Counts.per.Cell")+
+  geom_line(linetype="dashed" , color="grey", size=0.9)
+
+```
+
+
+
+
+```{r}
+
+sessionInfo()
+
+```
