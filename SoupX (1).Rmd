@@ -1,0 +1,242 @@
+---
+title: "Debris analysis using soupX"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r}
+library(dplyr)
+library(Seurat)
+library(SC3)
+library(SingleCellExperiment)
+#install.packages("githubinstall")
+#library(githubinstall)
+#githubinstall("scmap")
+library(scmap)
+#devtools::install_github("constantAmateur/SoupX")
+library(SoupX)
+library(ggplot2)
+library(tidyr)
+
+```
+
+The starting point is to download the raw and filtered cellranger output and extract them to a folder.
+#Loading the data
+SoupX comes with a convenience function for loading 10X data processed using cellranger.
+
+
+#Build data table
+Read in every 10x sample by soupX tool, split data with regards to reads in 0, 1, 2, 3-100 (debris) and 101-10000 (cellular) nUMI intervals, save nUMI information for 3-100 (debris) and 101-10000 (cellular) droplets.
+
+```{r}
+samples=read.csv("/home/jovyan/tisstab/analysis/allsamples.csv")
+#Exclude bad sample
+samples=samples[samples$sample!="HCATisStabAug177276393",]
+
+
+
+nDrop.all=data.frame(nUMI=numeric(),Donor=character(), Time=character, sample.id=character(), Tissue=character())
+nDrop.all.hi=data.frame(nUMI=numeric(),Donor=character(), Time=character, sample.id=character(), Tissue=character())
+samples$prop0=0
+samples$prop1=0
+samples$prop2=0
+samples$prop3_100=0
+samples$prop100_higher=0
+
+for (i in 1:nrow(samples)){
+  dataDirs = c(paste0("/home/jovyan/tisstab/data/", samples$sample[i]))
+  scl = load10X(dataDirs, keepDroplets = TRUE)
+  scl$channels$Channel1 = estimateSoup(scl$channels$Channel1)
+  nDrop=as.data.frame(scl$channels$Channel1$nDropUMIs[((scl$channels$Channel1$nDropUMIs <=100)& (scl$channels$Channel1$nDropUMIs>1))])
+  colnames(nDrop)="nUMI"
+  nDrop$Donor=samples$patient[i]
+  nDrop$Time=samples$timepoint[i]
+  nDrop$sample.id=samples$sample[i]
+  nDrop$Tissue=samples$organ[i]
+  nDrop.all=rbind(nDrop.all, nDrop)
+  
+  nDrop.hi=as.data.frame(scl$channels$Channel1$nDropUMIs[((scl$channels$Channel1$nDropUMIs >100)& (scl$channels$Channel1$nDropUMIs<=10000))])
+  nDrop.hi$Donor=samples$patient[i]
+  nDrop.hi$Time=samples$timepoint[i]
+  nDrop.hi$sample.id=samples$sample[i]
+  nDrop.hi$Tissue=samples$organ[i]
+  nDrop.all.hi=rbind(nDrop.all.hi, nDrop.hi)
+  
+  leng=length(scl$channels$Channel1$nDropUMIs)
+  samples$prop0[i]=length(scl$channels$Channel1$nDropUMIs[scl$channels$Channel1$nDropUMIs==0]) / leng
+  samples$prop1[i]=length(scl$channels$Channel1$nDropUMIs[scl$channels$Channel1$nDropUMIs==1]) / leng
+  samples$prop2[i]=length(scl$channels$Channel1$nDropUMIs[scl$channels$Channel1$nDropUMIs==2]) / leng
+  samples$prop3_100[i]=length(scl$channels$Channel1$nDropUMIs[(scl$channels$Channel1$nDropUMIs>2) & (scl$channels$Channel1$nDropUMIs<=100) ]) / leng
+  samples$prop100_higher[i]=length(scl$channels$Channel1$nDropUMIs[scl$channels$Channel1$nDropUMIs>100]) / leng
+}
+
+saveRDS(nDrop.all.hi, "/home/jovyan/tisstab/analysis/soupX.nDropUMI.hi.rds")
+saveRDS(nDrop.all, "/home/jovyan/tisstab/analysis/soupX.nDropUMI.rds")
+saveRDS(samples, "/home/jovyan/tisstab/analysis/soupX.samples.rds")
+
+
+```
+
+```{r data summary function}
+data_summary <- function(data, varname, groupnames){
+  require(plyr)
+  summary_func <- function(x, col){
+    c(mean = mean(x[[col]], na.rm=TRUE),
+      sd = mad(x[[col]], na.rm=TRUE))
+  }
+  data_sum<-ddply(data, groupnames, .fun=summary_func,
+                  varname)
+  data_sum <- rename(data_sum, c("mean" = varname))
+ return(data_sum)
+}
+```
+
+
+#Observe proportions of droplets by intervals of nUMI
+
+```{r}
+samples=readRDS("/home/jovyan/tisstab/analysis/soupX.samples.rds")
+
+
+
+#Percentages from full data
+
+data_long <- gather(samples, Interval, Proportion, prop0:prop100_higher, factor_key=TRUE)
+df3=data_summary(data_long, varname="Proportion", 
+                    groupnames=c("Interval", "timepoint", "organ"))
+
+ggplot(df3[df3$organ=="Spleen",], aes(x=timepoint, y=Proportion, group=Interval, color=Interval)) + 
+   geom_errorbar(aes(ymin=Proportion-sd, ymax=Proportion+sd), width=0.2, position=position_dodge(0.3), size=1) +
+   scale_color_grey()+
+    geom_line(aes(lty=Interval),position=position_dodge(0.3), size=1.5) + geom_point(position=position_dodge(0.3), size=4)+theme_classic()+
+  geom_point(data=df3[df3$organ=="Spleen",], aes(x=timepoint, y=Proportion, group=Interval),position=position_dodge(0.3) )
+
+ggplot(df3[df3$organ=="Lung",], aes(x=timepoint, y=Proportion, group=Interval, color=Interval)) + 
+   geom_errorbar(aes(ymin=Proportion-sd, ymax=Proportion+sd), width=0.2, position=position_dodge(0.3), size=1) +
+   scale_color_grey()+
+    geom_line(aes(lty=Interval),position=position_dodge(0.3), size=1.5) + geom_point(position=position_dodge(0.3), size=4)+theme_classic()+
+  geom_point(data=df3[df3$organ=="Lung",], aes(x=timepoint, y=Proportion, group=Interval),position=position_dodge(0.3) )
+
+ggplot(df3[df3$organ=="Oesophagus",], aes(x=timepoint, y=Proportion, group=Interval, color=Interval)) + 
+   geom_errorbar(aes(ymin=Proportion-sd, ymax=Proportion+sd), width=0.2, position=position_dodge(0.3), size=1) +
+   scale_color_grey()+
+    geom_line(aes(lty=Interval),position=position_dodge(0.3), size=1.5) + geom_point(position=position_dodge(0.3), size=4)+theme_classic()+
+  geom_point(data=df3[df3$organ=="Oesophagus",], aes(x=timepoint, y=Proportion, group=Interval),position=position_dodge(0.3) )
+
+
+
+```
+
+```{r}
+
+timecolors=readRDS("/home/jovyan/tisstab/timecolors.rds" )
+donorcolors=readRDS("/home/jovyan/tisstab/donorcolors.rds")
+
+nDrop.all=readRDS("/home/jovyan/tisstab/analysis/soupX.nDropUMI.rds")
+
+
+#Plot spleen only
+nDrop=nDrop.all[nDrop.all$Tissue=="Spleen",]
+
+ggplot(nDrop, aes(x=Donor, y=nUMI, fill=Time)) +
+geom_boxplot(outlier.shape=".")+
+  theme_classic()+  scale_fill_manual(values=timecolors)+ theme_classic()
+  
+ggplot(nDrop, aes(x=Time, y=nUMI, fill=Donor)) +
+geom_boxplot(outlier.shape=".")+
+  theme_classic()+    scale_fill_manual(values=donorcolors[1:5])+ theme_classic()
+
+
+
+#All tissues debris
+nDrop.all=nDrop.all[nDrop.all$nUMI>2,]
+
+samples$mean=0
+samples$median=0
+samples$q75=0
+samples$stdev=0
+for (i in (1:nrow(samples))){
+  mea=mean(nDrop.all$nUMI[nDrop.all$sample==samples$sample[i]])
+  samples$mean[i]=mea
+  quant=quantile(nDrop.all$nUMI[nDrop.all$sample==samples$sample[i]], c(.5, .75))
+  samples$median[i]=quant[1]
+  samples$q75[i]=quant[2]
+  samples$stdev[i]=sd(nDrop.all$nUMI[nDrop.all$sample==samples$sample[i]])
+
+}
+
+
+df3 <- data_summary(samples, varname="mean", 
+                    groupnames=c("organ", "timepoint"))
+
+head(df3)
+# Standard deviation of the mean plotted
+ggplot(df3, aes(x=timepoint, y=mean, group=organ, color=organ)) + 
+   geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=0.2, position=position_dodge(0.3), size=1) +
+    geom_line(position=position_dodge(0.3), size=1.5) + geom_point(position=position_dodge(0.3), size=4)+theme_classic()+
+  geom_point(data=samples, aes(x=timepoint, y=mean, group=organ),position=position_dodge(0.3) )
+
+
+spleen=samples[samples$organ=="Spleen",]
+#T-tests
+#0h vs 72h
+t.test(spleen$mean[spleen$timepoint=="72h"], y = spleen$mean[spleen$timepoint=="0h"], paired=TRUE, alternative = "g")
+#0h vs 24h
+t.test(spleen$mean[spleen$timepoint=="24h"], y = spleen$mean[spleen$timepoint=="0h"], paired=FALSE, alternative = "g")
+
+
+```
+
+
+#All tissues cellular material
+
+```{r}
+
+hisamples=samples
+
+nDrop.all.hi=readRDS("/home/jovyan/tisstab/analysis/soupX.nDropUMI.hi.rds")
+colnames(nDrop.all.hi)[1]="nUMI"
+hisamples$mean=0
+hisamples$median=0
+hisamples$q75=0
+hisamples$stdev=0
+
+for (i in (1:nrow(hisamples))){
+  mea=mean(nDrop.all.hi$nUMI[nDrop.all.hi$sample==hisamples$sample[i]])
+  hisamples$mean[i]=mea
+  quant=quantile(nDrop.all.hi$nUMI[nDrop.all.hi$sample==hisamples$sample[i]], c(.5, .75))
+  hisamples$median[i]=quant[1]
+  hisamples$q75[i]=quant[2]
+  hisamples$stdev[i]=sd(nDrop.all.hi$nUMI[nDrop.all.hi$sample==hisamples$sample[i]])
+
+}
+
+
+df3 <- data_summary(hisamples, varname="mean", 
+                    groupnames=c("organ", "timepoint"))
+
+head(df3)
+# Standard deviation of the mean plotted
+ggplot(df3, aes(x=timepoint, y=mean, group=organ, color=organ)) + 
+   geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=0.2, position=position_dodge(0.3), size=1) +
+    geom_line(position=position_dodge(0.3), size=1.5) + geom_point(position=position_dodge(0.3), size=4)+theme_classic()+
+  geom_point(data=hisamples, aes(x=timepoint, y=mean, group=organ),position=position_dodge(0.3) )
+
+
+spleen=hisamples[hisamples$organ=="Spleen",]
+#T-tests
+#0h vs 72h
+t.test(spleen$mean[spleen$timepoint=="72h"], y = spleen$mean[spleen$timepoint=="0h"], paired=TRUE, alternative = "l")
+#0h vs 24h
+t.test(spleen$mean[spleen$timepoint=="24h"], y = spleen$mean[spleen$timepoint=="0h"], paired=FALSE, alternative = "l")
+```
+
+
+
+
+
+```{r}
+sessionInfo()
+```
